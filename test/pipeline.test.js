@@ -403,3 +403,27 @@ test("a new revision of the same file is a new job; an old-revision instance fai
 	assert.equal((await w.job()).error_code, "source_changed");
 	assert.equal(calls(w, "/files/copy_v2"), 0);
 });
+
+test("live mode without a notifier fails closed before touching Dropbox", async () => {
+	const w = makeWorld();
+	w.deps.notifier = null;
+	w.dropbox.api.add(`${INBOX}/a.pdf`);
+	await w.pump();
+	const job = await w.job();
+	assert.equal(job.status, "FAILED");
+	assert.equal(job.error_category, "config");
+	assert.equal(job.error_code, "no_notifier");
+	assert.equal(w.gem.generate.length, 0);
+	assert.equal(calls(w, "/files/copy_v2") + calls(w, "/files/move_v2"), 0);
+	assert.equal(w.dropbox.api.at(`${INBOX}/a.pdf`).length, 1);
+});
+
+test("dry run needs no notifier and no write scope", async () => {
+	const w = makeWorld({ mode: "dry_run" });
+	w.deps.notifier = null;
+	w.dropbox.api.add(`${INBOX}/a.pdf`);
+	await w.pump();
+	assert.equal((await w.job()).status, "DRY_RUN_DONE");
+	const eps = new Set(w.dropbox.api.log.map((l) => l.ep));
+	assert.deepEqual([...eps].filter((e) => /copy|move|create_folder|upload/.test(e)), []);
+});

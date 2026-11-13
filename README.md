@@ -63,12 +63,12 @@ Prerequisites: Node 22+, a Cloudflare account, a Dropbox app (see below).
    npx wrangler queues create dropbox-classifier-jobs
    npx wrangler queues create dropbox-classifier-dlq
    ```
-3. Secrets (`npx wrangler secret put <NAME>`): `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `GEMINI_API_KEY`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`.
+3. Secrets (`npx wrangler secret put <NAME>`): `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `GEMINI_API_KEY`. For `MODE = "live"` also `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` (a live job without them fails with `no_notifier` before touching Dropbox; a dry run needs none).
 4. Review the `[vars]` in `wrangler.toml` (`SMTP_HOST` is Zoho's host for your data-centre region).
 5. `npm run deploy` (still `dry_run`), then add the Worker URL under **Webhooks** in the Dropbox app console (the Worker answers the challenge; a missed webhook is covered by the 30-minute Cron).
 6. Optional, **Cloudflare AI Gateway**: create a gateway and set `GEMINI_BASE_URL` to `https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/google-ai-studio` (add the secret `AI_GATEWAY_TOKEN` if the gateway requires authentication). Only `generateContent` goes through the gateway; the PDF upload and deletion stay direct to Google (the gateway documentation lists only generation endpoints for Google AI Studio). Switching provider later means changing this base URL and the client in `src/gemini.ts`.
 
-Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`. Tests: `npm test` (typecheck + 53 tests with real SQL via `node:sqlite`, fake Dropbox/Gemini/Queue/Workflow).
+Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`. Tests: `npm test` (typecheck + 55 tests with real SQL via `node:sqlite`, fake Dropbox/Gemini/Queue/Workflow).
 
 ### Configuration
 
@@ -155,6 +155,25 @@ Assumption: **30 documents/day** (adjust to yours). 9 Workflow steps per documen
 * **CPU is the one real risk.** Design choices to stay under 10 ms: no hashing/base64/PDF parsing in Workers, server-side Dropbox copy, streamed upload to Gemini, tiny step results. Measure `cpuTime` in `wrangler tail` during the dry-run phase. If a step exceeds it, **Workers Paid** (30 s default) fixes it without code changes; volume (steps/day) is not the constraint at personal scale.
 * Queue and DLQ retention (24 h on Free) do not matter: D1 is the recovery registry.
 * Gemini charges are separate (flex tier = 50 % of standard rate).
+
+## Shadow run (in parallel with the current Worker and Make)
+
+The classifier can run next to the live `dropbox-to-make` Worker and the Make scenario, which keep working unchanged.
+
+* **Separate Worker.** It is named `dropbox-classifier` (the current one is `dropbox-to-make`), with its own KV, Queues, Workflow and Dropbox app/webhook. Deploy it by hand from this branch (`npm run deploy`); do **not** merge the pull request while shadowing, because a merge to `main` is what the Workers Builds integration deploys for the current Worker.
+* **Read-only on Dropbox.** With `MODE = "dry_run"` it only lists, reads metadata and downloads. It never copies, moves, creates folders, sends mail or alerts, so the Dropbox app only needs `files.metadata.read` and `files.content.read` for now (add the write scopes at cutover), and the `SMTP_*` secrets are not needed.
+* **What it does consume:** Gemini calls (the same documents are classified twice, once by Make), Worker/Queue/Workflow/D1 quota, and rows in `jobs`. It reads the shared `epost-ledger` database but never touches `epost_letters`.
+* **Race with Make is harmless:** Make moves a file to `_sorted` within moments. The classifier reads the registered revision by `rev:` and the file by id, so it still finds it after the move. A file that is deleted or replaced fails as `source_missing` / `source_changed` in the dry run only.
+* **First scan:** it registers every PDF currently in the inbox (by design: those are unprocessed). Its cursor lives in D1 and does not interact with the current Worker's cursor.
+
+Compare with Make using the stored plan:
+
+```sql
+SELECT datetime(created_at/1000,'unixepoch') AS at, status, classification_model AS model,
+       needs_review, review_reason, dest_folder, dest_name, content_hash, error_code
+FROM jobs WHERE mode = 'dry_run' ORDER BY created_at DESC;
+```
+`content_hash` is the Dropbox hash of the original; Make's filed copy has the same hash, which links each job to Make's result in `/Courants`. Check folder, file name, review decision and the e-mail subject rule per document, and note any difference before cutover. Also watch `wrangler tail` for CPU time per Workflow step.
 
 ## Cutover and rollback
 

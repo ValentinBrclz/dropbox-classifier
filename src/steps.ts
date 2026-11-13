@@ -131,6 +131,8 @@ async function loadStep(
 	const job = await mustGet(deps, jobId);
 	// Terminal job, or an instance from an older generation: do nothing.
 	if (TERMINAL.has(job.status) || generation < job.generation) return { skip: true, needsAi: false, oversize: false };
+	// Live mode without a way to notify would file documents silently: refuse before touching anything.
+	if (job.mode === "live" && !deps.notifier) throw new ClassifierError("config", "no_notifier");
 
 	if (job.classification_json) {
 		await updateJob(deps.db, jobId, { status: job.needs_review ? "REVIEW_REQUIRED" : "CLASSIFIED", last_step: "load" });
@@ -294,11 +296,7 @@ async function archiveStep(deps: PipelineDeps, jobId: string): Promise<{ archive
 async function notifyStep(deps: PipelineDeps, jobId: string): Promise<{ sent: boolean }> {
 	const job = await mustGet(deps, jobId);
 	if (job.mode === "dry_run" || job.notify_status === "SENT" || job.notify_status === "SKIPPED") return { sent: false };
-	if (!deps.notifier) {
-		log("warn", "no notifier configured; notification skipped", { jobId });
-		await updateJob(deps.db, jobId, { notify_status: "SKIPPED" });
-		return { sent: false };
-	}
+	if (!deps.notifier) throw new ClassifierError("config", "no_notifier"); // never skip silently in live mode
 	const classification = storedClassification(job);
 	const plan = planFiling(classification, job.processing_date);
 	const finalPath = job.dest_path as string;

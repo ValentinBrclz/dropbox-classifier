@@ -99,7 +99,6 @@ required = [
   "DROPBOX_APP_SECRET",
   "DROPBOX_REFRESH_TOKEN",
   "GEMINI_API_KEY",
-  "SMTP_USER",
-  "SMTP_PASSWORD",
-  "SMTP_FROM",
 ]
+# SMTP_USER, SMTP_PASSWORD and SMTP_FROM are only needed for MODE = "live" (a live job
+# without them fails with `no_notifier` before touching Dropbox). A dry run needs none.
