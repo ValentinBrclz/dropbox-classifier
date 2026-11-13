@@ -1,21 +1,53 @@
-name = "dropbox-to-make"
+name = "dropbox-classifier"
 main = "src/index.ts"
 compatibility_date = "2026-07-23"
 
-# KV namespace for cursor, cached token, and dedup markers.
-# Create it first:
+# --- Storage ---------------------------------------------------------------
+# D1: authoritative job registry. Create it, then paste the id:
+#   npx wrangler d1 create dropbox-classifier
+#   npx wrangler d1 migrations apply dropbox-classifier --remote
+[[d1_databases]]
+binding = "DB"
+database_name = "dropbox-classifier"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# KV: non-critical only (cached Dropbox access token). NOT the old dropbox-to-make
+# namespace: create a new one so the two Workers never share a token cache.
 #   npx wrangler kv namespace create STATE
-# Then paste the returned ID below.
 [[kv_namespaces]]
 binding = "STATE"
-id = "6ef0bc9a09da4bb58b69ac0e5394d4fc"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
-# Optional safety net: reconcile every 30 minutes to catch missed webhooks.
-# Remove this section if the webhook should be the only trigger.
+# --- Queues: delivery hint only (24 h retention on Free) ----------------------
+#   npx wrangler queues create dropbox-classifier-jobs
+#   npx wrangler queues create dropbox-classifier-dlq
+[[queues.producers]]
+queue = "dropbox-classifier-jobs"
+binding = "JOBS_QUEUE"
+
+[[queues.consumers]]
+queue = "dropbox-classifier-jobs"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "dropbox-classifier-dlq"
+
+[[queues.consumers]]
+queue = "dropbox-classifier-dlq"
+max_batch_size = 10
+max_retries = 3
+
+# --- Workflow: one instance per document version --------------------------------
+[[workflows]]
+name = "dropbox-classifier-workflow"
+binding = "CLASSIFIER_WORKFLOW"
+class_name = "ClassifierWorkflow"
+
+# Reconciliation + missed-webhook safety net.
 [triggers]
 crons = ["*/30 * * * *"]
 
-# Observability. Query strings (the Dropbox webhook challenge) are redacted.
 [observability]
 enabled = true
 redact_query_string = true
@@ -33,15 +65,31 @@ head_sampling_rate = 0.01
 enabled = true
 
 [vars]
-DROPBOX_SOURCE = "/"
+# SAFETY: anything other than "live" is a dry run (classify + plan, no Dropbox
+# write, no e-mail). Switch to "live" only at the approved cutover.
+MODE = "dry_run"
+# Watched inbox folder(s), non-recursive, in the namespace of the Dropbox token.
+# VERIFY: see docs/GAP_ANALYSIS_AND_PLAN.md (R1).
+DROPBOX_SOURCE = "/Apps/IncomingScans"
+# Where processed originals go (Make: <inbox>/_sorted).
+ARCHIVE_FOLDER = "/Apps/IncomingScans/_sorted"
+NOTIFY_TO = "cur@brclz.ch"
+GEMINI_MODEL_PRIMARY = "gemini-3.8-flash"
+GEMINI_MODEL_FALLBACK = "gemini-3.5-flash-lite"
+# Make used "flex". Documented for the Interactions API; verify on generateContent in staging.
+GEMINI_SERVICE_TIER = "flex"
+GEMINI_TIMEOUT_SECONDS = "600"
+SMTP_HOST = "smtp.zoho.eu"
+SMTP_PORT = "465"
 
-# Secrets are NOT stored here. Set them with `wrangler secret put`:
+# Secrets are NOT stored here: `wrangler secret put <NAME>`.
 [secrets]
 required = [
   "DROPBOX_APP_KEY",
   "DROPBOX_APP_SECRET",
   "DROPBOX_REFRESH_TOKEN",
-  "MAKE_WEBHOOK_URL",
-  "MAKE_SHARED_SECRET",
+  "GEMINI_API_KEY",
+  "SMTP_USER",
+  "SMTP_PASSWORD",
+  "SMTP_FROM",
 ]
-
