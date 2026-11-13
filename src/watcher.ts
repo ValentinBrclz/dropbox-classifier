@@ -71,7 +71,12 @@ export async function scanFolders(deps: ScanDeps): Promise<{ registered: number;
 			registered += await scanFolder(deps, folder);
 		} catch (e) {
 			failedFolders++;
-			log("error", "folder scan failed", { code: (e as { code?: string }).code ?? "unexpected" });
+			// `detail` is Dropbox's machine error code (e.g. "path/not_found"), never a path or a name.
+			const err = e as { code?: string; summary?: string };
+			log("error", "folder scan failed", {
+				code: err.code ?? "unexpected",
+				detail: err.summary?.split("/").slice(0, 2).join("/"),
+			});
 		}
 	}
 	return { registered, failedFolders };

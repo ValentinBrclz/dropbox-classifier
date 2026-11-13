@@ -52,7 +52,7 @@ Prompt, schema, models, e-mail template, normalisation (`needsReview`, `shortIss
 Prerequisites: Node 22+, a Cloudflare account, a Dropbox app (see below).
 
 1. **Dropbox app: Full Dropbox**, scopes `files.metadata.read`, `files.metadata.write`, `files.content.read`, `files.content.write`. It must see both the inbox and `/Courants`. An *App folder* app cannot write `/Courants`. Get a refresh token with `epost-to-dropbox/scripts/get-dropbox-refresh-token.mjs`.
-   **Verify the inbox path as the API sees it** (e.g. `/Apps/IncomingScans`) and set the secrets `DROPBOX_SOURCE` / `ARCHIVE_FOLDER`; an empty or root value is refused (fail closed).
+   **Find the inbox path as the API sees it** with `node scripts/dropbox-list.mjs` (lists folders with your refresh token, level by level, and tells whether the account has a team space). Then **verify it** (e.g. `/Apps/IncomingScans`) and set the secrets `DROPBOX_SOURCE` / `ARCHIVE_FOLDER`; an empty or root value is refused (fail closed).
 2. **Database: reuse `epost-ledger`.** It is created and owned by the `epost-to-dropbox` repository (which creates `epost_letters`); this Worker adds `jobs` and `folder_state` to the same database. The id is already in `wrangler.toml`. Apply `epost-to-dropbox`'s migrations first, then this repository's (either order works; the file names differ, which is required because wrangler records applied migrations by name):
    ```bash
    npx wrangler d1 migrations apply epost-ledger --remote
