@@ -73,12 +73,6 @@ MODE = "dry_run"
 # error | warn | info. warn (default) = failures and anomalies only; info adds the
 # per-scan and per-reconcile summaries.
 LOG_LEVEL = "warn"
-# Watched inbox folder(s), non-recursive, in the namespace of the Dropbox token.
-# VERIFY: see docs/GAP_ANALYSIS_AND_PLAN.md (R1).
-DROPBOX_SOURCE = "/Apps/IncomingScans"
-# Where processed originals go (Make: <inbox>/_sorted).
-ARCHIVE_FOLDER = "/Apps/IncomingScans/_sorted"
-NOTIFY_TO = "cur@brclz.ch"
 GEMINI_MODEL_PRIMARY = "gemini-3.8-flash"
 GEMINI_MODEL_FALLBACK = "gemini-3.5-flash-lite"
 # Make used "flex". Documented for the Interactions API; verify on generateContent in staging.
@@ -99,6 +93,10 @@ required = [
   "DROPBOX_APP_SECRET",
   "DROPBOX_REFRESH_TOKEN",
   "GEMINI_API_KEY",
+  # Kept out of the repository on purpose (personal data / folder layout):
+  "DROPBOX_SOURCE",   # watched inbox folder(s), non-recursive, comma separated; e.g. /Apps/<inbox>
+  "ARCHIVE_FOLDER",   # where processed originals go (Make: <inbox>/_sorted)
+  "NOTIFY_TO",        # notification recipient
 ]
 # SMTP_USER, SMTP_PASSWORD and SMTP_FROM are only needed for MODE = "live" (a live job
 # without them fails with `no_notifier` before touching Dropbox). A dry run needs none.

@@ -9,6 +9,7 @@
  * `MODE` must be "live" to modify Dropbox; any other value is a dry run.
  */
 
+import { assertConfigured } from "./config.ts";
 import { buildDropbox, initLogging, settings } from "./deps.ts";
 import {
 	dispatchPendingJobs,
@@ -36,6 +37,7 @@ const workflowOf = (env: Env): WorkflowLike => env.CLASSIFIER_WORKFLOW as unknow
 /** Register new PDFs, then push the outbox to the queue. */
 async function scanAndDispatch(env: Env): Promise<void> {
 	const s = settings(env);
+	assertConfigured(s);
 	const { registered, failedFolders } = await scanFolders({
 		db: env.DB,
 		dbx: buildDropbox(env),

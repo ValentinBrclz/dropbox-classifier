@@ -6,3 +6,8 @@ GEMINI_API_KEY=""
 SMTP_USER=""
 SMTP_PASSWORD=""
 SMTP_FROM=""
+# Folder layout and recipient are secrets too (kept out of the repository).
+# Paths are in the namespace of the Dropbox token (non-recursive watch).
+DROPBOX_SOURCE="/Apps/IncomingScans"
+ARCHIVE_FOLDER="/Apps/IncomingScans/_sorted"
+NOTIFY_TO=""

@@ -9,12 +9,7 @@ import type { GeminiConfig } from "./gemini.ts";
 import type { PipelineDeps } from "./steps.ts";
 import { setLogLevel } from "./util.ts";
 import { socketConnect } from "./smtp-socket.ts";
-
-export interface Settings {
-	mode: "live" | "dry_run";
-	folders: string;
-	archiveFolder: string;
-}
+import { assertConfigured, type Settings } from "./config.ts";
 
 const str = (v: unknown): string => (v === undefined || v === null ? "" : String(v)).trim();
 
@@ -82,6 +77,7 @@ export function buildNotifier(env: Env): Notifier | null {
 
 export function buildDeps(env: Env): PipelineDeps {
 	initLogging(env);
+	assertConfigured(settings(env));
 	return {
 		db: env.DB,
 		dbx: buildDropbox(env),

@@ -52,7 +52,7 @@ Prompt, schema, models, e-mail template, normalisation (`needsReview`, `shortIss
 Prerequisites: Node 22+, a Cloudflare account, a Dropbox app (see below).
 
 1. **Dropbox app: Full Dropbox**, scopes `files.metadata.read`, `files.metadata.write`, `files.content.read`, `files.content.write`. It must see both the inbox and `/Courants`. An *App folder* app cannot write `/Courants`. Get a refresh token with `epost-to-dropbox/scripts/get-dropbox-refresh-token.mjs`.
-   **Verify the inbox path as the API sees it** (e.g. `/Apps/IncomingScans`) and set `DROPBOX_SOURCE` / `ARCHIVE_FOLDER`.
+   **Verify the inbox path as the API sees it** (e.g. `/Apps/IncomingScans`) and set the secrets `DROPBOX_SOURCE` / `ARCHIVE_FOLDER`; an empty or root value is refused (fail closed).
 2. **Database: reuse `epost-ledger`.** It is created and owned by the `epost-to-dropbox` repository (which creates `epost_letters`); this Worker adds `jobs` and `folder_state` to the same database. The id is already in `wrangler.toml`. Apply `epost-to-dropbox`'s migrations first, then this repository's (either order works; the file names differ, which is required because wrangler records applied migrations by name):
    ```bash
    npx wrangler d1 migrations apply epost-ledger --remote
@@ -63,12 +63,12 @@ Prerequisites: Node 22+, a Cloudflare account, a Dropbox app (see below).
    npx wrangler queues create dropbox-classifier-jobs
    npx wrangler queues create dropbox-classifier-dlq
    ```
-3. Secrets (`npx wrangler secret put <NAME>`): `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `GEMINI_API_KEY`. For `MODE = "live"` also `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` (a live job without them fails with `no_notifier` before touching Dropbox; a dry run needs none).
+3. Secrets (`npx wrangler secret put <NAME>`): `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `GEMINI_API_KEY`, `DROPBOX_SOURCE`, `ARCHIVE_FOLDER`. For `MODE = "live"` also `NOTIFY_TO`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` (a live job without them fails with `no_notifier` before touching Dropbox; a dry run needs none).
 4. Review the `[vars]` in `wrangler.toml` (`SMTP_HOST` is Zoho's host for your data-centre region).
 5. `npm run deploy` (still `dry_run`), then add the Worker URL under **Webhooks** in the Dropbox app console (the Worker answers the challenge; a missed webhook is covered by the 30-minute Cron).
 6. Optional, **Cloudflare AI Gateway**: create a gateway and set `GEMINI_BASE_URL` to `https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/google-ai-studio` (add the secret `AI_GATEWAY_TOKEN` if the gateway requires authentication). Only `generateContent` goes through the gateway; the PDF upload and deletion stay direct to Google (the gateway documentation lists only generation endpoints for Google AI Studio). Switching provider later means changing this base URL and the client in `src/gemini.ts`.
 
-Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`. Tests: `npm test` (typecheck + 55 tests with real SQL via `node:sqlite`, fake Dropbox/Gemini/Queue/Workflow).
+Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`. Tests: `npm test` (typecheck + 58 tests with real SQL via `node:sqlite`, fake Dropbox/Gemini/Queue/Workflow).
 
 ### Configuration
 
@@ -76,9 +76,9 @@ Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`.
 |---|---|---|---|
 | `MODE` | var | `dry_run` | `live` to modify Dropbox and send mail |
 | `LOG_LEVEL` | var | `warn` | `error`, `warn` or `info`. `warn` = failures and anomalies only (successful scans are silent); `info` adds the scan/reconcile summaries. Info lines use `console.info` so Workers Logs records level info |
-| `DROPBOX_SOURCE` | var | `/Apps/IncomingScans` | watched folder(s), comma separated, non-recursive |
-| `ARCHIVE_FOLDER` | var | `/Apps/IncomingScans/_sorted` | processed originals |
-| `NOTIFY_TO` | var | `cur@brclz.ch` | recipient |
+| `DROPBOX_SOURCE` | **secret** | — | watched folder(s), comma separated, non-recursive, in the namespace of the Dropbox token. Required; the Dropbox root is refused |
+| `ARCHIVE_FOLDER` | **secret** | — | processed originals (Make: `<inbox>/_sorted`). Required; must be a sub-folder, never `/` |
+| `NOTIFY_TO` | **secret** | — | notification recipient (only needed for `live`) |
 | `GEMINI_MODEL_PRIMARY` / `_FALLBACK` | var | `gemini-3.8-flash` / `gemini-3.5-flash-lite` | Make's models (both listed as stable by Google on 2026-11-13) |
 | `GEMINI_SERVICE_TIER` | var | `flex` | Make used `flex`; documented for the Interactions API, **verify on `generateContent`** (empty = standard) |
 | `GEMINI_TIMEOUT_SECONDS` | var | `600` | per call; flex targets 1–15 min |
