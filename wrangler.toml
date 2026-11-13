@@ -2,6 +2,12 @@ name = "dropbox-classifier"
 main = "src/index.ts"
 compatibility_date = "2026-07-23"
 
+# The Dropbox webhook needs a public HTTPS URL: keep the workers.dev address (the handler
+# rejects any request without a valid Dropbox signature). Preview URLs (one extra public
+# URL per version) are not needed.
+workers_dev = true
+preview_urls = false
+
 # --- Storage ---------------------------------------------------------------
 # D1: the `epost-ledger` database, created and owned by the epost-to-dropbox
 # repository (it holds `epost_letters`; this Worker adds `jobs` and `folder_state`).
