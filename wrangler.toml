@@ -17,15 +17,15 @@ migrations_dir = "migrations"
 # namespace: create a new one so the two Workers never share a token cache.
 #   npx wrangler kv namespace create STATE
 [[kv_namespaces]]
-binding = "STATE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+binding = "DROPBOX-CLASSIFIER-STATE"
+id = "79699e918d6b4fa69752487e15138d5e"
 
 # --- Queues: delivery hint only (24 h retention on Free) ----------------------
 #   npx wrangler queues create dropbox-classifier-jobs
 #   npx wrangler queues create dropbox-classifier-dlq
 [[queues.producers]]
 queue = "dropbox-classifier-jobs"
-binding = "JOBS_QUEUE"
+binding = "dropbox_classifier_jobs"
 
 [[queues.consumers]]
 queue = "dropbox-classifier-jobs"
