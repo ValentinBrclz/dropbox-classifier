@@ -36,31 +36,43 @@ export interface FiledMailInput {
 	generation: number;
 }
 
-/** Subject and heading rules of Make module 58. */
+/** Make `ifempty(value; fallback)`: null, undefined and "" fall back. */
+const ifEmpty = (v: string | null | undefined, fallback: string): string => (v === null || v === undefined || v === "" ? fallback : v);
+
+const LABEL_TD = "padding:6px 10px 6px 0;color:#555;vertical-align:top";
+
+/**
+ * Subject and HTML of Make module 58, reproduced from the scenario's template.
+ * Differences, on purpose: the Dropbox link keeps `/` unescaped (so it opens the
+ * folder), "Nom enregistré" is the name actually saved (differs from the planned
+ * one only after a name conflict), and a small job reference line is appended.
+ */
 export function renderFiledMail(i: FiledMailInput): OutgoingMail {
 	const { classification: c, plan: p } = i;
 	const tag = p.needsReview ? "[A VERIFIER]" : c.action_required ? "[ACTION]" : "[CLASSE]";
 	const heading = p.needsReview ? "⚠️ Document à vérifier" : c.action_required ? "⚠️ Action requise" : "✓ Document classé";
-	const row = (label: string, value: string) =>
-		`<tr><td style="padding:4px 12px 4px 0;color:#555">${label}</td><td style="padding:4px 0"><b>${value}</b></td></tr>`;
-	const amount = c.amount_chf === null ? "—" : `CHF ${c.amount_chf.toFixed(2)}`;
-	const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px">
-<h2 style="margin:0 0 12px">${heading}</h2>
-<table style="border-collapse:collapse">
-${row("Titre", escapeHtml(p.safeLabel))}
-${row("Dossier", escapeHtml(p.personPath))}
-${row("Date du document", escapeHtml(c.document_date_iso ?? "Non déterminée"))}
-${row("Émetteur", escapeHtml(c.issuer ?? "Non identifié"))}
-${row("Type", escapeHtml(c.document_type))}
-${row("Montant", escapeHtml(amount))}
-${row("Échéance / rendez-vous", escapeHtml(c.deadline_iso ?? "—"))}
-${row("Action requise", c.action_required ? "Oui" : "Non")}
-${row("Référence", escapeHtml(c.document_reference ?? "—"))}
-${row("Motif de revue", escapeHtml(p.needsReview ? (p.reviewReason ?? "Vérification manuelle requise") : "Aucune"))}
-</table>
-<p><a href="${escapeHtml(dropboxHomeLink(i.finalPath))}">Ouvrir dans Dropbox</a></p>
-<p style="color:#555">Fichier source : ${escapeHtml(i.sourceName)}<br>Fichier final : ${escapeHtml(i.finalName)}</p>
-<p style="color:#888;font-size:12px">Réf. ${i.jobId}</p>
+	const amount = c.amount_chf === null ? "—" : String(c.amount_chf);
+	const currency = c.amount_chf === null ? "" : " CHF";
+	const html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#202124;font-size:14px;line-height:1.55;max-width:680px">
+  <h2 style="font-size:20px;margin:0 0 8px">${heading}</h2>
+  <p style="font-size:16px;margin:0 0 16px"><strong>${escapeHtml(p.safeLabel)}</strong></p>
+  <table style="border-collapse:collapse;width:100%;font-size:14px">
+    <tr><td style="padding:6px 10px 6px 0;color:#555;width:145px;vertical-align:top">Dossier</td><td style="padding:6px 0"><strong>${escapeHtml(p.personPath)}</strong></td></tr>
+    <tr><td style="${LABEL_TD}">Date du document</td><td style="padding:6px 0">${ifEmpty(c.document_date_iso, "Non déterminée")}</td></tr>
+    <tr><td style="${LABEL_TD}">Expéditeur</td><td style="padding:6px 0">${escapeHtml(ifEmpty(c.issuer, "Non identifié"))}</td></tr>
+    <tr><td style="${LABEL_TD}">Type</td><td style="padding:6px 0">${escapeHtml(c.document_type)}</td></tr>
+    <tr><td style="${LABEL_TD}">Montant</td><td style="padding:6px 0"><strong>${amount}${currency}</strong></td></tr>
+    <tr><td style="${LABEL_TD}">Délai / rendez-vous</td><td style="padding:6px 0"><strong>${ifEmpty(c.deadline_iso, "—")}</strong></td></tr>
+    <tr><td style="${LABEL_TD}">Action requise</td><td style="padding:6px 0">${c.action_required ? "Oui" : "Non"}</td></tr>
+    <tr><td style="${LABEL_TD}">Référence</td><td style="padding:6px 0">${escapeHtml(ifEmpty(c.document_reference, "—"))}</td></tr>
+    <tr><td style="${LABEL_TD}">Vérification</td><td style="padding:6px 0">${p.needsReview ? escapeHtml(p.reviewReason ?? "") : "Aucune"}</td></tr>
+  </table>
+  <div style="background:#f4f6f8;border:1px solid #e1e5e9;border-radius:6px;padding:12px;margin-top:18px">
+    <div style="font-weight:bold;margin-bottom:5px">Chemin complet du PDF enregistré dans Dropbox</div>
+    <div style="font-family:Consolas,Monaco,monospace;font-size:12px;overflow-wrap:anywhere;word-break:break-word"><a href="${escapeHtml(dropboxHomeLink(i.finalPath))}">${escapeHtml(i.finalPath)}</a></div>
+  </div>
+  <p style="font-size:12px;color:#6b7280;margin-top:15px">Fichier source : ${escapeHtml(i.sourceName)}<br>Nom enregistré : ${escapeHtml(i.finalName)}</p>
+  <p style="font-size:11px;color:#9ca3af;margin-top:8px">Réf. ${i.jobId}</p>
 </div>`;
 	return {
 		subject: `${tag} ${p.personPath} - ${p.safeLabel}`,

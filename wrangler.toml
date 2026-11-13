@@ -3,13 +3,14 @@ main = "src/index.ts"
 compatibility_date = "2026-07-23"
 
 # --- Storage ---------------------------------------------------------------
-# D1: authoritative job registry. Create it, then paste the id:
-#   npx wrangler d1 create dropbox-classifier
-#   npx wrangler d1 migrations apply dropbox-classifier --remote
+# D1: the `epost-ledger` database, created and owned by the epost-to-dropbox
+# repository (it holds `epost_letters`; this Worker adds `jobs` and `folder_state`).
+# Apply epost-to-dropbox's migrations first, then this repository's:
+#   npx wrangler d1 migrations apply epost-ledger --remote
 [[d1_databases]]
 binding = "DB"
-database_name = "dropbox-classifier"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_name = "epost-ledger"
+database_id = "c0bdd15b-4692-4edf-9404-51702d7d1aef"
 migrations_dir = "migrations"
 
 # KV: non-critical only (cached Dropbox access token). NOT the old dropbox-to-make
@@ -78,6 +79,11 @@ GEMINI_MODEL_PRIMARY = "gemini-3.8-flash"
 GEMINI_MODEL_FALLBACK = "gemini-3.5-flash-lite"
 # Make used "flex". Documented for the Interactions API; verify on generateContent in staging.
 GEMINI_SERVICE_TIER = "flex"
+# Optional Cloudflare AI Gateway for generateContent (file upload stays direct):
+#   https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/google-ai-studio
+# Empty = call Google directly. If the gateway requires authentication, also set the
+# optional secret AI_GATEWAY_TOKEN.
+GEMINI_BASE_URL = ""
 GEMINI_TIMEOUT_SECONDS = "600"
 SMTP_HOST = "smtp.zoho.eu"
 SMTP_PORT = "465"

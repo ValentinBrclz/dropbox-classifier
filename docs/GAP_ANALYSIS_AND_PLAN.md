@@ -16,7 +16,7 @@ Sources reviewed: both repositories at their current `main`, the Make handover (
 | 41 destination | folder + file name | `src/classification.ts` | implemented |
 | 42 upload (+ no folder creation) | new copy of bytes | server-side `files/copy_v2` + content-hash verification; folders created | implemented (deviation D1) |
 | 43 move source | to `/_sorted` | `files/move_v2`, only after verified copy | implemented |
-| 58 email | HTML mail on every completion, Zoho SMTP | SMTP over `cloudflare:sockets`, same subject/fields | implemented, **unverified against live Zoho** |
+| 58 email | HTML mail on every completion, Zoho SMTP | SMTP over `cloudflare:sockets`, same subject/fields | implemented with Make's exact HTML, **unverified against live Zoho** (Workers can open outbound TCP on 465/587; port 25 is blocked) |
 | 79 Break | incomplete execution | D1 `FAILED` + error mail + bounded auto-requeue | implemented |
 
 ## 2. Inconsistencies found
@@ -54,7 +54,7 @@ Deviations from Make, all behaviour-preserving: **D1** copy/move server-side ins
 
 Fact (from README/tests of the existing Worker): fetching `/content` marks a letter READ; unread listing therefore never returns it again. Today's mitigation is an immediate reset to UNREAD; if the process dies between download and reset, or the reset fails, the letter is invisible to the next run.
 
-Implemented: a **durable letter ledger** in the shared D1 (`epost_letters`). A row is written *before* the download. The next run first recovers every non-terminal row: `UPLOADED` → archive (no re-download, no re-upload); `DOWNLOADING` → reset to UNREAD and let the normal pipeline retry. Rows still unresolved after 1 h are logged at `error` level. Fail-closed rule: if the ledger write fails, the letter is **not** downloaded (it stays UNREAD).
+Implemented: a **durable letter ledger** in the `epost-ledger` D1 database (`epost_letters`, owned by the epost-to-dropbox repository; this Worker shares that database). A row is written *before* the download. The next run first recovers every non-terminal row: `UPLOADED` → archive (no re-download, no re-upload); `DOWNLOADING` → reset to UNREAD and let the normal pipeline retry. Rows still unresolved after 1 h are logged at `error` level. Fail-closed rule: if the ledger write fails, the letter is **not** downloaded (it stays UNREAD).
 
 It also fixes a second defect: after classification moves the original out of the inbox, a failed ePost archive previously led to a **second upload of the same letter** (the "already exists" check only looks at the inbox path). The ledger prevents the re-upload.
 

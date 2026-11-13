@@ -26,6 +26,25 @@ test("html escapes dynamic values and carries the job reference", () => {
 	assert.match(renderFiledMail(input({ document_date_iso: null })).html, /Non déterminée/);
 });
 
+test("template matches the Make module 58 markup and rules", () => {
+	const m = renderFiledMail(input({ amount_chf: 123.5, deadline_iso: "2026-11-30", document_reference: "R&D" }));
+	assert.match(m.html, /<h2 style="font-size:20px;margin:0 0 8px">✓ Document classé<\/h2>/);
+	assert.match(m.html, /Expéditeur<\/td><td style="padding:6px 0">Justice de Paix</);
+	const review = renderFiledMail(input({ issuer: null })).html;
+	assert.match(review, /Expéditeur<\/td><td style="padding:6px 0">Non identifié</);
+	assert.match(review, /Vérification<\/td><td style="padding:6px 0">Vérification manuelle requise</);
+	assert.match(m.html, /<strong>123\.5 CHF<\/strong>/);
+	assert.match(m.html, /Délai \/ rendez-vous<\/td><td style="padding:6px 0"><strong>2026-11-30<\/strong>/);
+	assert.match(m.html, /Référence<\/td><td style="padding:6px 0">R&amp;D</);
+	assert.match(m.html, /Vérification<\/td><td style="padding:6px 0">Aucune</);
+	assert.match(m.html, /Chemin complet du PDF enregistré dans Dropbox/);
+	assert.match(m.html, /Nom enregistré : a\.pdf/);
+	const none = renderFiledMail(input({ amount_chf: null, deadline_iso: null })).html;
+	assert.match(none, /<strong>—<\/strong>/);
+	assert.doesNotMatch(none, / CHF/);
+	assert.match(renderFiledMail(input({ action_required: true })).html, /⚠️ Action requise/);
+});
+
 test("error mail contains no document data", () => {
 	const m = renderErrorMail("jabc", 2, "auth", "dbx_401");
 	assert.match(m.subject, /jabc/);

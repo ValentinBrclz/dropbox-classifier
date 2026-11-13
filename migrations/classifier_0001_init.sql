@@ -1,4 +1,9 @@
 -- dropbox-classifier: authoritative job registry.
+-- Lives in the `epost-ledger` D1 database, which is created and owned by the
+-- epost-to-dropbox repository (it creates `epost_letters`). Apply that repository's
+-- migrations FIRST, then this one. This file only adds tables (jobs, folder_state)
+-- and must never alter `epost_letters`. Its name is prefixed because wrangler
+-- records applied migrations by file name.
 -- Queue and Workflow history are NOT authoritative (24 h / 3 day retention on Free).
 -- No document content is stored here; classification_json holds metadata only.
 
@@ -62,17 +67,3 @@ CREATE TABLE folder_state (
   cursor     TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
-
--- Worker 1 (epost-to-dropbox) ledger. Created here because both Workers share
--- this database; Worker 1 only reads/writes this table.
-CREATE TABLE epost_letters (
-  letter_id    TEXT PRIMARY KEY,
-  state        TEXT NOT NULL CHECK (state IN ('DOWNLOADING','UPLOADED','ARCHIVED','RESET')),
-  dropbox_path TEXT,
-  size         INTEGER,
-  content_hash TEXT,
-  attempts     INTEGER NOT NULL DEFAULT 0,
-  created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL
-);
-CREATE INDEX epost_letters_open ON epost_letters (updated_at) WHERE state IN ('DOWNLOADING','UPLOADED');

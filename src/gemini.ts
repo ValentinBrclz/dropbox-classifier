@@ -22,6 +22,13 @@ export interface GeminiConfig {
 	/** Per-call timeout (flex latency target is 1-15 min). */
 	timeoutMs: number;
 	baseUrl?: string;
+	/**
+	 * Base URL for generateContent only (e.g. a Cloudflare AI Gateway
+	 * `.../google-ai-studio`). File upload/delete always use `baseUrl` (direct).
+	 */
+	generateBaseUrl?: string;
+	/** Extra headers for generateContent (e.g. `cf-aig-authorization`). */
+	generateHeaders?: Record<string, string>;
 	fetchFn?: typeof fetch;
 }
 
@@ -179,9 +186,13 @@ export async function generate(c: GeminiConfig, model: string, file: UploadedFil
 
 	let res: Response;
 	try {
-		res = await f(c)(`${base(c)}/v1beta/models/${model}:generateContent`, {
+		res = await f(c)(`${(c.generateBaseUrl ?? base(c)).replace(/\/+$/, "")}/v1beta/models/${model}:generateContent`, {
 			method: "POST",
-			headers: { "x-goog-api-key": c.apiKey, "Content-Type": "application/json" },
+			headers: {
+				"x-goog-api-key": c.apiKey,
+				"Content-Type": "application/json",
+				...c.generateHeaders,
+			},
 			body: JSON.stringify(body),
 			signal: AbortSignal.timeout(c.timeoutMs),
 		});

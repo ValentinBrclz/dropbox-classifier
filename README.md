@@ -45,7 +45,7 @@ Dropbox ──webhook (signed) / Cron */30──▶ fetch/scheduled handler
 
 ### Behaviour kept from Make (and the few deliberate changes)
 
-Prompt, schema, models, normalisation (`needsReview`, `shortIssuer`, `safeLabel` 47/60, `comptaDocument`), destination rules, e-mail subject/fields: see `src/classification.ts` and the tests. `BERCLAZ_Valentin` is still filed under `/Courants/CUR/BERCLAZ_Valentin/<year>` (as Make does) pending your decision. Deviations: server-side copy instead of re-upload; Gemini file deleted; folders created; processing date frozen at job creation; characters sanitised; extra review triggers (deadline before document date, document date in the future). `docs/make-reference/` holds the verbatim handover; a test fails if `src/prompt.ts` or `src/schema.ts` drift from it.
+Prompt, schema, models, e-mail template, normalisation (`needsReview`, `shortIssuer`, `safeLabel` 47/60, `comptaDocument`), destination rules, e-mail subject/fields: see `src/classification.ts` and the tests. `BERCLAZ_Valentin` is still filed under `/Courants/CUR/BERCLAZ_Valentin/<year>` (as Make does) pending your decision. Deviations: server-side copy instead of re-upload; Gemini file deleted; folders created; processing date frozen at job creation; characters sanitised; extra review triggers (deadline before document date, document date in the future). `docs/make-reference/` holds the verbatim handover; a test fails if `src/prompt.ts` or `src/schema.ts` drift from it.
 
 ## Setup
 
@@ -53,20 +53,22 @@ Prerequisites: Node 22+, a Cloudflare account, a Dropbox app (see below).
 
 1. **Dropbox app: Full Dropbox**, scopes `files.metadata.read`, `files.metadata.write`, `files.content.read`, `files.content.write`. It must see both the inbox and `/Courants`. An *App folder* app cannot write `/Courants`. Get a refresh token with `epost-to-dropbox/scripts/get-dropbox-refresh-token.mjs`.
    **Verify the inbox path as the API sees it** (e.g. `/Apps/IncomingScans`) and set `DROPBOX_SOURCE` / `ARCHIVE_FOLDER`.
-2. Create resources and paste the ids into `wrangler.toml`:
+2. **Database: reuse `epost-ledger`.** It is created and owned by the `epost-to-dropbox` repository (which creates `epost_letters`); this Worker adds `jobs` and `folder_state` to the same database. The id is already in `wrangler.toml`. Apply `epost-to-dropbox`'s migrations first, then this repository's (either order works; the file names differ, which is required because wrangler records applied migrations by name):
    ```bash
-   npx wrangler d1 create dropbox-classifier
+   npx wrangler d1 migrations apply epost-ledger --remote
+   ```
+   Never alter `epost_letters` here. Then create the remaining resources and paste the ids into `wrangler.toml`:
+   ```bash
    npx wrangler kv namespace create STATE
    npx wrangler queues create dropbox-classifier-jobs
    npx wrangler queues create dropbox-classifier-dlq
-   npx wrangler d1 migrations apply dropbox-classifier --remote
    ```
 3. Secrets (`npx wrangler secret put <NAME>`): `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `GEMINI_API_KEY`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`.
 4. Review the `[vars]` in `wrangler.toml` (`SMTP_HOST` is Zoho's host for your data-centre region).
 5. `npm run deploy` (still `dry_run`), then add the Worker URL under **Webhooks** in the Dropbox app console (the Worker answers the challenge; a missed webhook is covered by the 30-minute Cron).
-6. **Use the same `database_id` in `epost-to-dropbox/wrangler.toml`** (binding `LEDGER`) and deploy the migrations here *before* deploying that Worker.
+6. Optional, **Cloudflare AI Gateway**: create a gateway and set `GEMINI_BASE_URL` to `https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/google-ai-studio` (add the secret `AI_GATEWAY_TOKEN` if the gateway requires authentication). Only `generateContent` goes through the gateway; the PDF upload and deletion stay direct to Google (the gateway documentation lists only generation endpoints for Google AI Studio). Switching provider later means changing this base URL and the client in `src/gemini.ts`.
 
-Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`. Tests: `npm test` (typecheck + 47 tests with real SQL via `node:sqlite`, fake Dropbox/Gemini/Queue/Workflow).
+Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`. Tests: `npm test` (typecheck + 50 tests with real SQL via `node:sqlite`, fake Dropbox/Gemini/Queue/Workflow).
 
 ### Configuration
 
@@ -79,12 +81,14 @@ Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`.
 | `GEMINI_MODEL_PRIMARY` / `_FALLBACK` | var | `gemini-3.8-flash` / `gemini-3.5-flash-lite` | Make's models (both listed as stable by Google on 2026-11-13) |
 | `GEMINI_SERVICE_TIER` | var | `flex` | Make used `flex`; documented for the Interactions API, **verify on `generateContent`** (empty = standard) |
 | `GEMINI_TIMEOUT_SECONDS` | var | `600` | per call; flex targets 1–15 min |
+| `GEMINI_BASE_URL` | var | empty | Cloudflare AI Gateway URL for `generateContent` (empty = direct to Google) |
+| `AI_GATEWAY_TOKEN` | optional secret | — | sent as `cf-aig-authorization` |
 | `SMTP_HOST` / `SMTP_PORT` | var | `smtp.zoho.eu` / `465` | implicit TLS (port 25 is blocked on Workers) |
 | secrets | secret | — | see Setup |
 
 ## Operations runbook
 
-Run SQL with `npx wrangler d1 execute dropbox-classifier --remote --command "<sql>"`. All times are epoch milliseconds.
+Run SQL with `npx wrangler d1 execute epost-ledger --remote --command "<sql>"`. All times are epoch milliseconds.
 
 ```sql
 -- What needs attention?
@@ -174,7 +178,7 @@ Assumption: **30 documents/day** (adjust to yours). 9 Workflow steps per documen
 ## Known limitations (stated, not hidden)
 
 * Unverified until staging: Zoho SMTP from Workers, `flex` on `generateContent`, Dropbox `create_folder_v2` creating missing parents (relied upon), the real inbox namespace, CPU per step.
-* E-mail HTML is rebuilt from the field list in the handover; Make's exact markup was not available.
+* E-mail HTML is Make's template. Two deliberate differences: the Dropbox link keeps `/` unescaped so it opens the folder (Make's `encodeURL` behaviour on slashes is unverified), and "Nom enregistré" is the name actually saved. A small `Réf.` line is appended so a duplicate can be recognised.
 * SMTP is at-least-once. A crash between acceptance and the D1 update can produce a duplicate mail (same Message-ID and job reference).
 * A document with a blocked/oversized/invalid AI result is filed in `_SCAN_INBOX`, never guessed into a person folder.
 * Documents stuck in the inbox because their Dropbox file was replaced or removed show as `FAILED(source_missing|source_changed)`.

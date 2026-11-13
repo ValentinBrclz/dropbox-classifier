@@ -49,6 +49,11 @@ export function buildGemini(env: Env): GeminiConfig {
 		fallbackModel: str(e.GEMINI_MODEL_FALLBACK) || "gemini-3.5-flash-lite",
 		serviceTier: str(e.GEMINI_SERVICE_TIER),
 		timeoutMs: (Number(str(e.GEMINI_TIMEOUT_SECONDS)) || 600) * 1000,
+		// Optional Cloudflare AI Gateway for generateContent only.
+		generateBaseUrl: str(e.GEMINI_BASE_URL) || undefined,
+		generateHeaders: str(e.AI_GATEWAY_TOKEN)
+			? { "cf-aig-authorization": `Bearer ${str(e.AI_GATEWAY_TOKEN)}` }
+			: undefined,
 	};
 }
 
