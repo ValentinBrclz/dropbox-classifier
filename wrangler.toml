@@ -1,21 +1,61 @@
-name = "dropbox-to-make"
+name = "dropbox-classifier"
 main = "src/index.ts"
 compatibility_date = "2026-07-23"
 
-# KV namespace for cursor, cached token, and dedup markers.
-# Create it first:
-#   npx wrangler kv namespace create STATE
-# Then paste the returned ID below.
+# The Dropbox webhook needs a public HTTPS URL: keep the workers.dev address (the handler
+# rejects any request without a valid Dropbox signature). Preview URLs (one extra public
+# URL per version) are not needed.
+workers_dev = true
+preview_urls = false
+
+# --- Storage ---------------------------------------------------------------
+# D1: the `epost-ledger` database, created and owned by the epost-to-dropbox
+# repository (it holds `epost_letters`; this Worker adds `jobs` and `folder_state`).
+# Apply epost-to-dropbox's migrations first, then this repository's:
+#   npx wrangler d1 migrations apply epost-ledger --remote
+[[d1_databases]]
+binding = "DB"
+database_name = "epost-ledger"
+database_id = "c0bdd15b-4692-4edf-9404-51702d7d1aef"
+migrations_dir = "migrations"
+
+# KV: non-critical only (cached Dropbox access token). Its own namespace, NOT the old
+# dropbox-to-make one, so the two Workers never share a token cache.
+# Binding names are read by the code: keep STATE and JOBS_QUEUE exactly (the dashboard
+# may propose other names; env.STATE / env.JOBS_QUEUE would then be undefined).
 [[kv_namespaces]]
 binding = "STATE"
-id = "6ef0bc9a09da4bb58b69ac0e5394d4fc"
+id = "79699e918d6b4fa69752487e15138d5e"
 
-# Optional safety net: reconcile every 30 minutes to catch missed webhooks.
-# Remove this section if the webhook should be the only trigger.
+# --- Queues: delivery hint only (24 h retention on Free) ----------------------
+#   npx wrangler queues create dropbox-classifier-jobs
+#   npx wrangler queues create dropbox-classifier-dlq
+[[queues.producers]]
+queue = "dropbox-classifier-jobs"
+binding = "JOBS_QUEUE"
+
+[[queues.consumers]]
+queue = "dropbox-classifier-jobs"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "dropbox-classifier-dlq"
+
+[[queues.consumers]]
+queue = "dropbox-classifier-dlq"
+max_batch_size = 10
+max_retries = 3
+
+# --- Workflow: one instance per document version --------------------------------
+[[workflows]]
+name = "dropbox-classifier-workflow"
+binding = "CLASSIFIER_WORKFLOW"
+class_name = "ClassifierWorkflow"
+
+# Reconciliation + missed-webhook safety net.
 [triggers]
 crons = ["*/30 * * * *"]
 
-# Observability. Query strings (the Dropbox webhook challenge) are redacted.
 [observability]
 enabled = true
 redact_query_string = true
@@ -33,15 +73,36 @@ head_sampling_rate = 0.01
 enabled = true
 
 [vars]
-DROPBOX_SOURCE = "/"
+# SAFETY: anything other than "live" is a dry run (classify + plan, no Dropbox
+# write, no e-mail). Switch to "live" only at the approved cutover.
+MODE = "dry_run"
+# error | warn | info. warn (default) = failures and anomalies only; info adds the
+# per-scan and per-reconcile summaries.
+LOG_LEVEL = "warn"
+GEMINI_MODEL_PRIMARY = "gemini-3.8-flash"
+GEMINI_MODEL_FALLBACK = "gemini-3.5-flash-lite"
+# Make used "flex". Documented for the Interactions API; verify on generateContent in staging.
+GEMINI_SERVICE_TIER = "flex"
+# Optional Cloudflare AI Gateway for generateContent (file upload stays direct):
+#   https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/google-ai-studio
+# Empty = call Google directly. If the gateway requires authentication, also set the
+# optional secret AI_GATEWAY_TOKEN.
+GEMINI_BASE_URL = ""
+GEMINI_TIMEOUT_SECONDS = "600"
+SMTP_HOST = "smtp.zoho.eu"
+SMTP_PORT = "465"
 
-# Secrets are NOT stored here. Set them with `wrangler secret put`:
+# Secrets are NOT stored here: `wrangler secret put <NAME>`.
 [secrets]
 required = [
   "DROPBOX_APP_KEY",
   "DROPBOX_APP_SECRET",
   "DROPBOX_REFRESH_TOKEN",
-  "MAKE_WEBHOOK_URL",
-  "MAKE_SHARED_SECRET",
+  "GEMINI_API_KEY",
+  # Kept out of the repository on purpose (personal data / folder layout):
+  "DROPBOX_SOURCE",   # watched inbox folder(s), non-recursive, comma separated; e.g. /Apps/<inbox>
+  "ARCHIVE_FOLDER",   # where processed originals go (Make: <inbox>/_sorted)
+  "NOTIFY_TO",        # notification recipient
 ]
-
+# SMTP_USER, SMTP_PASSWORD and SMTP_FROM are only needed for MODE = "live" (a live job
+# without them fails with `no_notifier` before touching Dropbox). A dry run needs none.

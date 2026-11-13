@@ -2,7 +2,12 @@
 DROPBOX_APP_KEY=""
 DROPBOX_APP_SECRET=""
 DROPBOX_REFRESH_TOKEN=""
-# Comma-separated folders, watched non-recursively. Empty or "/" = Dropbox root.
-DROPBOX_SOURCE="/Scans,/Inbox/Invoices"
-MAKE_WEBHOOK_URL=""
-MAKE_SHARED_SECRET=""
+GEMINI_API_KEY=""
+SMTP_USER=""
+SMTP_PASSWORD=""
+SMTP_FROM=""
+# Folder layout and recipient are secrets too (kept out of the repository).
+# Paths are in the namespace of the Dropbox token (non-recursive watch).
+DROPBOX_SOURCE="/Apps/IncomingScans"
+ARCHIVE_FOLDER="/Apps/IncomingScans/_sorted"
+NOTIFY_TO=""

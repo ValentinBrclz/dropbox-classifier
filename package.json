@@ -1,8 +1,8 @@
 {
-  "name": "dropbox-to-make",
+  "name": "dropbox-classifier",
   "version": "1.0.0",
   "private": true,
-  "description": "Dropbox webhook shim that forwards new-file events to Make.",
+  "description": "Dropbox -> Gemini classification pipeline on Cloudflare (D1, Queues, Workflows).",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -10,14 +10,16 @@
     "generate-types": "wrangler types",
     "check-types": "wrangler types --check",
     "typecheck": "wrangler types && tsc --noEmit",
-    "test": "npm run typecheck"
+    "test": "npm run typecheck && node --test test/*.test.js",
+    "test:unit": "node --test test/*.test.js",
+    "migrate:local": "wrangler d1 migrations apply epost-ledger --local"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
-    "wrangler": "^4.154.0"
+    "wrangler": "^4.162.0"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
-    "workerd@1.20261023.1": true
+    "workerd@1.20261113.1": true
   }
 }
