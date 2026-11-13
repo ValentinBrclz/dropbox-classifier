@@ -57,7 +57,7 @@ Prerequisites: Node 22+, a Cloudflare account, a Dropbox app (see below).
    ```bash
    npx wrangler d1 migrations apply epost-ledger --remote
    ```
-   Never alter `epost_letters` here. Then create the remaining resources and paste the ids into `wrangler.toml`:
+   Never alter `epost_letters` here. **Keep the binding names `STATE` and `JOBS_QUEUE` in `wrangler.toml`** (the code reads `env.STATE` / `env.JOBS_QUEUE`; the dashboard may propose other names, which breaks the build). The KV namespace and Queues already exist in the account (the KV id is in `wrangler.toml`). To recreate them elsewhere:
    ```bash
    npx wrangler kv namespace create STATE
    npx wrangler queues create dropbox-classifier-jobs
@@ -68,13 +68,14 @@ Prerequisites: Node 22+, a Cloudflare account, a Dropbox app (see below).
 5. `npm run deploy` (still `dry_run`), then add the Worker URL under **Webhooks** in the Dropbox app console (the Worker answers the challenge; a missed webhook is covered by the 30-minute Cron).
 6. Optional, **Cloudflare AI Gateway**: create a gateway and set `GEMINI_BASE_URL` to `https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/google-ai-studio` (add the secret `AI_GATEWAY_TOKEN` if the gateway requires authentication). Only `generateContent` goes through the gateway; the PDF upload and deletion stay direct to Google (the gateway documentation lists only generation endpoints for Google AI Studio). Switching provider later means changing this base URL and the client in `src/gemini.ts`.
 
-Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`. Tests: `npm test` (typecheck + 50 tests with real SQL via `node:sqlite`, fake Dropbox/Gemini/Queue/Workflow).
+Local: `cp .dev.vars.example .dev.vars`, `npm run migrate:local`, `npm run dev`. Tests: `npm test` (typecheck + 53 tests with real SQL via `node:sqlite`, fake Dropbox/Gemini/Queue/Workflow).
 
 ### Configuration
 
 | Name | Kind | Default | Purpose |
 |---|---|---|---|
 | `MODE` | var | `dry_run` | `live` to modify Dropbox and send mail |
+| `LOG_LEVEL` | var | `warn` | `error`, `warn` or `info`. `warn` = failures and anomalies only (successful scans are silent); `info` adds the scan/reconcile summaries. Info lines use `console.info` so Workers Logs records level info |
 | `DROPBOX_SOURCE` | var | `/Apps/IncomingScans` | watched folder(s), comma separated, non-recursive |
 | `ARCHIVE_FOLDER` | var | `/Apps/IncomingScans/_sorted` | processed originals |
 | `NOTIFY_TO` | var | `cur@brclz.ch` | recipient |

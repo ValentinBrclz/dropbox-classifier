@@ -7,6 +7,7 @@ import { Dropbox } from "./dropbox.ts";
 import { type Notifier, sendSmtp } from "./email.ts";
 import type { GeminiConfig } from "./gemini.ts";
 import type { PipelineDeps } from "./steps.ts";
+import { setLogLevel } from "./util.ts";
 import { socketConnect } from "./smtp-socket.ts";
 
 export interface Settings {
@@ -25,6 +26,11 @@ export function settings(env: Env): Settings {
 		folders: str(e.DROPBOX_SOURCE),
 		archiveFolder: str(e.ARCHIVE_FOLDER).replace(/\/+$/, ""),
 	};
+}
+
+/** Apply `LOG_LEVEL`; call at the start of every handler. */
+export function initLogging(env: Env): void {
+	setLogLevel(str((env as unknown as Record<string, unknown>).LOG_LEVEL));
 }
 
 export function buildDropbox(env: Env): Dropbox {
@@ -75,6 +81,7 @@ export function buildNotifier(env: Env): Notifier | null {
 }
 
 export function buildDeps(env: Env): PipelineDeps {
+	initLogging(env);
 	return {
 		db: env.DB,
 		dbx: buildDropbox(env),

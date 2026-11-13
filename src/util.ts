@@ -35,15 +35,29 @@ export function describeError(err: unknown): { category: ErrorCategory; code: st
 
 type Level = "error" | "warn" | "info";
 
+const RANK: Record<Level, number> = { error: 0, warn: 1, info: 2 };
+let threshold: Level = "warn";
+
+/**
+ * Set the minimum level that is written (`LOG_LEVEL`). Unknown or empty values
+ * fall back to `warn`: successful runs are silent in production.
+ */
+export function setLogLevel(value: string | undefined): void {
+	const v = (value ?? "").trim().toLowerCase();
+	threshold = v === "error" || v === "info" ? v : "warn";
+}
+
 /**
  * One structured log line. Callers pass job ids and codes only; the message
  * and fields must never contain file names, paths, person names or tokens.
+ * `info` uses console.info so Workers Logs records the right level.
  */
 export function log(level: Level, message: string, data?: Record<string, unknown>): void {
+	if (RANK[level] > RANK[threshold]) return;
 	const line = data ? `[${level}] ${message} ${JSON.stringify(data)}` : `[${level}] ${message}`;
 	if (level === "error") console.error(line);
 	else if (level === "warn") console.warn(line);
-	else console.log(line);
+	else console.info(line);
 }
 
 /* ------------------------------ timing ------------------------------------ */

@@ -9,7 +9,7 @@
  * `MODE` must be "live" to modify Dropbox; any other value is a dry run.
  */
 
-import { buildDropbox, settings } from "./deps.ts";
+import { buildDropbox, initLogging, settings } from "./deps.ts";
 import {
 	dispatchPendingJobs,
 	handleDeadLetter,
@@ -48,6 +48,7 @@ async function scanAndDispatch(env: Env): Promise<void> {
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		initLogging(env);
 		if (request.method === "GET") {
 			const challenge = new URL(request.url).searchParams.get("challenge") ?? "";
 			return new Response(challenge, {
@@ -68,6 +69,7 @@ export default {
 	},
 
 	async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+		initLogging(env);
 		ctx.waitUntil(
 			(async () => {
 				await scanAndDispatch(env).catch(() => log("error", "scheduled scan failed"));
@@ -78,6 +80,7 @@ export default {
 	},
 
 	async queue(batch: MessageBatch<JobMessage>, env: Env): Promise<void> {
+		initLogging(env);
 		const dead = batch.queue === DLQ_NAME;
 		for (const msg of batch.messages) {
 			try {
